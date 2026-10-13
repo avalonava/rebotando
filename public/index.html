@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Things I Like</title>
+<title>Cosas que rebotan en mis bóvedas</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🕯️</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -18,12 +18,9 @@
 </style>
 </head>
 <body>
-<h1>Things I Like</h1>
-<p>A little pile of stuff I found.</p>
+<h1>Cosas que rebotan en mis bóvedas</h1>
 <hr>
-<div id="posts">Loading...</div>
-<hr>
-<p><small>Best viewed in any browser.</small></p>
+<div id="posts">Cargando...</div>
 <script>
 const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const link = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}">${u}</a>`);
@@ -54,8 +51,8 @@ function shuffle(list) {
 }
 
 fetch("/api/posts").then(r => r.json()).then(ps => {
-  document.getElementById("posts").innerHTML = ps.length ? shuffle(ps).map(render).join("") : "Nothing here yet.";
-}).catch(() => document.getElementById("posts").textContent = "Couldn't load posts.");
+  document.getElementById("posts").innerHTML = ps.length ? shuffle(ps).map(render).join("") : "Todavía no hay nada.";
+}).catch(() => document.getElementById("posts").textContent = "No se pudieron cargar las publicaciones.");
 </script>
 </body>
 </html>
