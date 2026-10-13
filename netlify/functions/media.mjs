@@ -23,7 +23,7 @@ export default async (req, context) => {
       return new Response(null, { status: 416, headers: { "content-range": `bytes */${total}` } });
     return new Response(r.data.slice(start, end + 1), {
       status: 206,
-      headers: { ...headers, "content-range": `bytes ${start}-${end}/${total}`, "content-length": String(end - start + 1) },
+      headers: { ...headers, "cache-control": "no-store", "content-range": `bytes ${start}-${end}/${total}`, "content-length": String(end - start + 1) },
     });
   }
 

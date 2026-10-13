@@ -52,7 +52,7 @@ async function start() {
       ${(p.files || []).map(f => f.type.startsWith("image/") ? `<img src="/media/${f.key}">` : `<small>${esc(f.name || "archivo")}</small> `).join("")}
       <input class="t" placeholder="Título" value="${esc(p.title)}">
       <textarea class="x" placeholder="Texto">${esc(p.text)}</textarea>
-      <button>Guardar</button> <small class="s"></small>
+      <button>Guardar</button> <button class="del">Borrar</button> <small class="s"></small>
     </div>`).join("") : "Todavía no hay nada.";
 }
 
@@ -65,6 +65,13 @@ $("go").onclick = async () => {
 $("list").addEventListener("click", async e => {
   if (e.target.tagName !== "BUTTON") return;
   const d = e.target.closest(".post"), s = d.querySelector(".s");
+  if (e.target.classList.contains("del")) {
+    if (!confirm("¿Borrar esta publicación y sus archivos? No se puede deshacer.")) return;
+    s.textContent = "Borrando...";
+    const r = await api({ id: d.dataset.id, delete: true });
+    if (r.ok) d.remove(); else s.textContent = "Error al borrar.";
+    return;
+  }
   s.textContent = "Guardando...";
   const r = await api({ id: d.dataset.id, title: d.querySelector(".t").value, text: d.querySelector(".x").value });
   s.textContent = r.ok ? "Guardado." : "Error al guardar.";

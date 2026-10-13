@@ -12,6 +12,13 @@ export default async (req) => {
   const post = await store.get(String(p.id), { type: "json" });
   if (!post) return new Response("not found", { status: 404 });
 
+  if (p.delete) {
+    const media = getStore("media");
+    for (const f of post.files || []) await media.delete(f.key);
+    await store.delete(String(p.id));
+    return new Response("deleted");
+  }
+
   post.title = String(p.title ?? post.title).trim();
   post.text = String(p.text ?? post.text).trim();
   await store.setJSON(post.id, post);

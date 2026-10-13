@@ -13,6 +13,7 @@
   a { color: #0000ee; } a:visited { color: #551a8b; }
   img { max-width: 100%; border: 1px solid #000; }
   canvas { max-width: 100%; border: 1px solid #000; display: block; }
+  canvas[hidden] { display: none; }
   blockquote { margin: 1em 0 1em 1.5em; font-style: italic; }
   small { color: #666; }
   .post { margin: 1.5em 0; white-space: pre-wrap; }
@@ -33,7 +34,7 @@ function render(p) {
     const u = `/media/${f.key}`;
     if (f.type.startsWith("image/")) h += `<img src="${u}" alt="${esc(f.name||"")}"><br>`;
     else if (f.type.startsWith("audio/")) h += `<audio controls src="${u}"></audio><br>`;
-    else if (f.type === "application/pdf") h += `<a href="${u}"><canvas data-pdf="${u}" hidden></canvas></a><a href="${u}">${esc(f.name||"PDF")}</a><br>`;
+    else if (f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")) h += `<a href="${u}"><canvas data-pdf="${u}" hidden></canvas></a><a href="${u}">${esc(f.name||"PDF")}</a><br>`;
     else if (f.type.startsWith("video/")) h += `<video controls width="100%" src="${u}"></video><br>`;
     else h += `<a href="${u}">${esc(f.name||"file")}</a><br>`;
   }
@@ -57,20 +58,26 @@ function pdfPreviews() {
   const cs = [...document.querySelectorAll("canvas[data-pdf]")];
   if (!cs.length) return;
   const base = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  const fail = (c, e) => c.closest("a").insertAdjacentHTML("afterend",
+    "<small>Vista previa no disponible (" + esc(String((e && e.message) || e)) + ")</small><br>");
   const sc = document.createElement("script");
   sc.src = base + "pdf.min.js";
+  sc.onerror = () => cs.forEach(c => fail(c, "no cargó pdf.js"));
   sc.onload = () => {
     pdfjsLib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.js";
     cs.forEach(async c => {
       try {
-        const pg = await (await pdfjsLib.getDocument(c.dataset.pdf).promise).getPage(1);
+        const r = await fetch(c.dataset.pdf);
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        const data = new Uint8Array(await r.arrayBuffer());
+        const pg = await (await pdfjsLib.getDocument({ data }).promise).getPage(1);
         const dpr = window.devicePixelRatio || 1;
         const w = document.getElementById("posts").clientWidth;
         const vp = pg.getViewport({ scale: (w / pg.getViewport({ scale: 1 }).width) * dpr });
         c.width = vp.width; c.height = vp.height; c.style.width = (vp.width / dpr) + "px";
         await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
         c.hidden = false;
-      } catch (e) {}
+      } catch (e) { fail(c, e); }
     });
   };
   document.head.appendChild(sc);
