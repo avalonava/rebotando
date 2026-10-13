@@ -15,6 +15,9 @@
   button { width: auto; padding: 6px 14px; cursor: pointer; }
   textarea { min-height: 5em; }
   img { max-width: 120px; max-height: 120px; border: 1px solid #000; margin-right: 6px; }
+  video, canvas { display: block; max-width: 200px; border: 1px solid #000; margin: 4px 0; }
+  canvas[hidden] { display: none; }
+  audio { display: block; max-width: 100%; margin: 4px 0; }
   .post { margin: 1.5em 0; } small { color: #666; }
 </style>
 </head>
@@ -42,18 +45,65 @@ try { KEY = localStorage.getItem("key") || ""; } catch (e) {}
 
 const api = body => fetch("/api/edit?key=" + encodeURIComponent(KEY), { method: "POST", body: JSON.stringify(body) });
 
+const isPdf = f => f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
+let count = {};
+const thumb = f => {
+  const u = "/media/" + f.key;
+  const dup = count[(f.name || "").toLowerCase()] > 1 ? " ⚠ repetido" : "";
+  const label = `<small>${esc(f.name || "archivo")}${dup}</small><br>`;
+  if (f.type.startsWith("image/")) return `<img src="${u}"><br>` + label;
+  if (f.type.startsWith("video/")) return `<video src="${u}#t=0.1" controls preload="metadata" playsinline></video>` + label;
+  if (f.type.startsWith("audio/")) return `<audio src="${u}" controls preload="none"></audio>` + label;
+  if (isPdf(f)) return `<canvas data-pdf="${u}" hidden></canvas>` + label;
+  return label;
+};
+
+function pdfPreviews() {
+  const cs = [...document.querySelectorAll("canvas[data-pdf]")];
+  if (!cs.length) return;
+  const base = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  const sc = document.createElement("script");
+  sc.src = base + "pdf.min.js";
+  sc.onload = () => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.js";
+    cs.forEach(async c => {
+      try {
+        const r = await fetch(c.dataset.pdf);
+        if (!r.ok) throw 0;
+        const data = new Uint8Array(await r.arrayBuffer());
+        const pg = await (await pdfjsLib.getDocument({ data }).promise).getPage(1);
+        const dpr = window.devicePixelRatio || 1;
+        const vp = pg.getViewport({ scale: (200 / pg.getViewport({ scale: 1 }).width) * dpr });
+        c.width = vp.width; c.height = vp.height; c.style.width = (vp.width / dpr) + "px";
+        await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+        c.hidden = false;
+      } catch (e) {}
+    });
+  };
+  document.head.appendChild(sc);
+}
+
 async function start() {
   if (!KEY || !(await api({ check: 1 })).ok) { $("login").hidden = false; return; }
   $("login").hidden = true;
   $("new").hidden = false;
   const ps = await (await fetch("/api/posts")).json();
+  const nm = p => ((p.files && p.files[0] && p.files[0].name) || "").toLowerCase();
+  ps.sort((a, b) => {
+    const x = nm(a), y = nm(b);
+    if (!x !== !y) return x ? -1 : 1;
+    return x.localeCompare(y, undefined, { numeric: true }) || a.id - b.id;
+  });
+  count = {};
+  ps.forEach(p => (p.files || []).forEach(f => { const k = (f.name || "").toLowerCase(); count[k] = (count[k] || 0) + 1; }));
   $("list").innerHTML = ps.length ? ps.map(p => `
     <div class="post" data-id="${p.id}"><hr>
-      ${(p.files || []).map(f => f.type.startsWith("image/") ? `<img src="/media/${f.key}">` : `<small>${esc(f.name || "archivo")}</small> `).join("")}
+      ${(p.files || []).map(thumb).join("")}
       <input class="t" placeholder="Título" value="${esc(p.title)}">
       <textarea class="x" placeholder="Texto">${esc(p.text)}</textarea>
       <button>Guardar</button> <button class="del">Borrar</button> <small class="s"></small>
     </div>`).join("") : "Todavía no hay nada.";
+  pdfPreviews();
 }
 
 $("go").onclick = async () => {
