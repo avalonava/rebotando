@@ -1,5 +1,7 @@
 import { getStore } from "@netlify/blobs";
 
+const STYLES = ["auto", "normal", "cita", "grande", "centrado", "pequeno", "mono"];
+
 export default async (req) => {
   const q = new URL(req.url).searchParams;
   if (req.method !== "POST" || q.get("key") !== process.env.SECRET)
@@ -21,6 +23,7 @@ export default async (req) => {
 
   post.title = String(p.title ?? post.title).trim();
   post.text = String(p.text ?? post.text).trim();
+  if (p.style !== undefined) post.style = STYLES.includes(p.style) ? p.style : "auto";
   await store.setJSON(post.id, post);
   return new Response("ok");
 };

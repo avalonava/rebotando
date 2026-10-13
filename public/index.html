@@ -5,16 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cosas que rebotan en mis bóvedas</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🕯️</text></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
-  body { font-family: "EB Garamond", Garamond, "Times New Roman", serif; font-size: 20px; line-height: 1.4; background: #fff; color: #000; max-width: 640px; margin: 0 auto; padding: 12px; }
+  body { font-family: "Times New Roman", Times, serif; font-size: 18px; line-height: 1.4; background: #fff; color: #000; max-width: 640px; margin: 0 auto; padding: 12px; }
   a { color: #0000ee; } a:visited { color: #551a8b; }
   img { max-width: 100%; border: 1px solid #000; }
   canvas { max-width: 100%; border: 1px solid #000; display: block; }
   canvas[hidden] { display: none; }
+  .ph { width: 100%; min-height: 200px; background: #eee; }
   blockquote { margin: 1em 0 1em 1.5em; font-style: italic; }
+  .big { font-size: 1.8em; line-height: 1.2; }
+  .center { text-align: center; }
+  .sm { font-size: .8em; color: #444; }
+  .mono { font-family: "Courier New", Courier, monospace; font-size: .9em; }
   small { color: #666; }
   .post { margin: 1.5em 0; white-space: pre-wrap; }
 </style>
@@ -23,22 +25,21 @@
 <h1>Cosas que rebotan en mis bóvedas</h1>
 <hr>
 <div id="posts">Cargando...</div>
+<script src="/format.js"></script>
 <script>
-const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const link = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}">${u}</a>`);
 
 function render(p) {
   let h = '<div class="post">';
-  if (p.title) h += `<b>${link(p.title)}</b><br>`;
+  if (p.title) h += `<b>${fmt(p.title)}</b><br>`;
   for (const f of p.files || []) {
     const u = `/media/${f.key}`;
-    if (f.type.startsWith("image/")) h += `<img src="${u}" alt="${esc(f.name||"")}"><br>`;
-    else if (f.type.startsWith("audio/")) h += `<audio controls src="${u}"></audio><br>`;
-    else if (f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")) h += `<a href="${u}"><canvas data-pdf="${u}" hidden></canvas></a><a href="${u}">${esc(f.name||"PDF")}</a><br>`;
-    else if (f.type.startsWith("video/")) h += `<video controls width="100%" src="${u}"></video><br>`;
+    if (f.type.startsWith("image/")) h += `<img class="ph" loading="lazy" decoding="async" src="${u}" alt="${esc(f.name||"")}" onload="this.classList.remove('ph')"><br>`;
+    else if (f.type.startsWith("audio/")) h += `<audio controls preload="none" src="${u}"></audio><br>`;
+    else if (f.type === "application/pdf" || /\.pdf$/i.test(f.name || "")) h += `<a href="${u}"><canvas data-pdf="${u}"></canvas></a><a href="${u}">${esc(f.name||"PDF")}</a><br>`;
+    else if (f.type.startsWith("video/")) h += `<video class="ph" controls playsinline preload="none" width="100%" data-src="${u}#t=0.1" onloadedmetadata="this.classList.remove('ph')"></video><br>`;
     else h += `<a href="${u}">${esc(f.name||"file")}</a><br>`;
   }
-  if (p.text) h += /^["“]/.test(p.text) ? `<blockquote>${link(p.text)}</blockquote>` : link(p.text) + "<br>";
+  if (p.text) h += styled(p.style, p.text);
   return h + `</div><hr>`;
 }
 
@@ -53,39 +54,72 @@ function shuffle(list) {
   return out;
 }
 
-// First-page preview for PDFs (pdf.js loads only when a post has a PDF)
+// Start loading videos only when they get close to the screen
+function lazyVideos() {
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    const v = e.target; io.unobserve(v); v.preload = "metadata"; v.src = v.dataset.src;
+  }), { rootMargin: "400px" });
+  document.querySelectorAll("video[data-src]:not([data-seen])").forEach(v => { v.dataset.seen = 1; io.observe(v); });
+}
+
+// First-page preview for PDFs, drawn only when near the screen (pdf.js loads on first use)
+let lib;
 function pdfPreviews() {
-  const cs = [...document.querySelectorAll("canvas[data-pdf]")];
+  const cs = [...document.querySelectorAll("canvas[data-pdf]:not([data-seen])")];
   if (!cs.length) return;
+  cs.forEach(c => { c.dataset.seen = 1; });
   const base = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
-  const fail = (c, e) => c.closest("a").insertAdjacentHTML("afterend",
-    "<small>Vista previa no disponible (" + esc(String((e && e.message) || e)) + ")</small><br>");
-  const sc = document.createElement("script");
-  sc.src = base + "pdf.min.js";
-  sc.onerror = () => cs.forEach(c => fail(c, "no cargó pdf.js"));
-  sc.onload = () => {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.js";
-    cs.forEach(async c => {
-      try {
-        const r = await fetch(c.dataset.pdf);
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        const data = new Uint8Array(await r.arrayBuffer());
-        const pg = await (await pdfjsLib.getDocument({ data }).promise).getPage(1);
-        const dpr = window.devicePixelRatio || 1;
-        const w = document.getElementById("posts").clientWidth;
-        const vp = pg.getViewport({ scale: (w / pg.getViewport({ scale: 1 }).width) * dpr });
-        c.width = vp.width; c.height = vp.height; c.style.width = (vp.width / dpr) + "px";
-        await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
-        c.hidden = false;
-      } catch (e) { fail(c, e); }
-    });
+  const load = () => lib || (lib = new Promise((ok, no) => {
+    const sc = document.createElement("script");
+    sc.src = base + "pdf.min.js";
+    sc.onload = () => { pdfjsLib.GlobalWorkerOptions.workerSrc = base + "pdf.worker.min.js"; ok(); };
+    sc.onerror = () => no(new Error("no cargó pdf.js"));
+    document.head.appendChild(sc);
+  }));
+  const fail = (c, e) => {
+    c.hidden = true;
+    c.closest("a").insertAdjacentHTML("afterend",
+      "<small>Vista previa no disponible (" + esc(String((e && e.message) || e)) + ")</small><br>");
   };
-  document.head.appendChild(sc);
+  const draw = async c => {
+    try {
+      await load();
+      const r = await fetch(c.dataset.pdf);
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = new Uint8Array(await r.arrayBuffer());
+      const pg = await (await pdfjsLib.getDocument({ data }).promise).getPage(1);
+      const dpr = window.devicePixelRatio || 1;
+      const w = document.getElementById("posts").clientWidth;
+      const vp = pg.getViewport({ scale: (w / pg.getViewport({ scale: 1 }).width) * dpr });
+      c.width = vp.width; c.height = vp.height; c.style.width = (vp.width / dpr) + "px";
+      await pg.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
+    } catch (e) { fail(c, e); }
+  };
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) { io.unobserve(e.target); draw(e.target); }
+  }), { rootMargin: "400px" });
+  cs.forEach(c => io.observe(c));
 }
 
 fetch("/api/posts").then(r => r.json()).then(ps => {
-  document.getElementById("posts").innerHTML = ps.length ? shuffle(ps).map(render).join("") : "Todavía no hay nada.";
-  pdfPreviews();
+  const box = document.getElementById("posts");
+  if (!ps.length) { box.textContent = "Todavía no hay nada."; return; }
+  const list = shuffle(ps), BATCH = 10;
+  let n = 0;
+  box.innerHTML = "";
+  const sentinel = document.createElement("div");
+  sentinel.style.height = "1px";
+  box.after(sentinel);
+  const more = () => {
+    box.insertAdjacentHTML("beforeend", list.slice(n, n + BATCH).map(render).join(""));
+    n += BATCH;
+    pdfPreviews(); lazyVideos();
+    if (n >= list.length) { io.disconnect(); sentinel.remove(); }
+    else { io.unobserve(sentinel); io.observe(sentinel); }
+  };
+  const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) more(); }, { rootMargin: "800px" });
+  io.observe(sentinel);
 }).catch(() => document.getElementById("posts").textContent = "No se pudieron cargar las publicaciones.");
 </script>
 </body>

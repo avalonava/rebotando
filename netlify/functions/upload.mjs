@@ -1,6 +1,7 @@
 import { getStore } from "@netlify/blobs";
 
 const num = /^\d+$/;
+const STYLES = ["auto", "normal", "cita", "grande", "centrado", "pequeno", "mono"];
 
 export default async (req) => {
   const q = new URL(req.url).searchParams;
@@ -13,6 +14,7 @@ export default async (req) => {
     if (!num.test(String(p.id))) return new Response("bad id", { status: 400 });
     await getStore("posts").setJSON(p.id, {
       id: p.id, title: p.title || "", text: p.text || "", files: p.files || [],
+      style: STYLES.includes(p.style) ? p.style : "auto",
     });
     return new Response("ok");
   }

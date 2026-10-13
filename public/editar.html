@@ -6,14 +6,19 @@
 <meta name="robots" content="noindex">
 <title>Editar</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🕯️</text></svg>">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
 <style>
-  body { font-family: "EB Garamond", Garamond, "Times New Roman", serif; font-size: 20px; line-height: 1.4; max-width: 640px; margin: 0 auto; padding: 12px; background: #fff; color: #000; }
-  input, textarea, button { font: inherit; width: 100%; box-sizing: border-box; margin: 4px 0; padding: 6px; border: 1px solid #000; border-radius: 0; background: #fff; }
+  body { font-family: "Times New Roman", Times, serif; font-size: 18px; line-height: 1.4; max-width: 640px; margin: 0 auto; padding: 12px; background: #fff; color: #000; }
+  input, textarea, button, select { font: inherit; width: 100%; box-sizing: border-box; margin: 4px 0; padding: 6px; border: 1px solid #000; border-radius: 0; background: #fff; }
   button { width: auto; padding: 6px 14px; cursor: pointer; }
   textarea { min-height: 5em; }
+  .ed select { width: auto; }
+  blockquote { margin: 1em 0 1em 1.5em; font-style: italic; }
+  .big { font-size: 1.8em; line-height: 1.2; }
+  .center { text-align: center; }
+  .sm { font-size: .8em; color: #444; }
+  .mono { font-family: "Courier New", Courier, monospace; font-size: .9em; }
+  .pv { white-space: pre-wrap; border-left: 3px double #999; padding-left: 8px; margin: 6px 0; }
+  .pv:empty { display: none; }
   img { max-width: 120px; max-height: 120px; border: 1px solid #000; margin-right: 6px; }
   video, canvas { display: block; max-width: 200px; border: 1px solid #000; margin: 4px 0; }
   canvas[hidden] { display: none; }
@@ -31,7 +36,7 @@
 <div id="new" hidden>
   <h2>Nueva publicación</h2>
   <input id="nt" placeholder="Título">
-  <textarea id="nx" placeholder="Texto o enlace"></textarea>
+  <div id="ned" class="ed"></div>
   <input id="nf" type="file" multiple>
   <label><input id="sep" type="checkbox" style="width:auto"> Una publicación por archivo (ignora título y texto)</label><br>
   <button id="pub">Publicar</button> <small id="ns"></small>
@@ -39,15 +44,53 @@
 </div>
 <div id="tools" hidden><button id="dd">Quitar repetidos</button> <small id="ds"></small></div>
 <div id="list"></div>
+<script src="/format.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 let KEY = "";
 try { KEY = localStorage.getItem("key") || ""; } catch (e) {}
 
 const api = body => fetch("/api/edit?key=" + encodeURIComponent(KEY), { method: "POST", body: JSON.stringify(body) });
 
 const isPdf = f => f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
+const OPTS = [["auto","Automático"],["normal","Normal"],["cita","Cita"],["grande","Grande"],["centrado","Centrado"],["pequeno","Pequeño"],["mono","Monoespaciado"]];
+const editor = (style, text) => `<div class="ed">
+  <select class="st">${OPTS.map(([v, l]) => `<option value="${v}"${v === style ? " selected" : ""}>${l}</option>`).join("")}</select>
+  <button type="button" class="fm" data-k="b"><b>B</b></button>
+  <button type="button" class="fm" data-k="i"><i>I</i></button>
+  <button type="button" class="fm" data-k="a">Enlace</button>
+  <textarea class="x" placeholder="Texto">${esc(text)}</textarea>
+  <div class="pv"></div></div>`;
+
+function preview(ed) {
+  const t = ed.querySelector(".x").value.trim();
+  ed.querySelector(".pv").innerHTML = t ? styled(ed.querySelector(".st").value, t) : "";
+}
+
+function applyFmt(btn) {
+  const ta = btn.closest(".ed").querySelector(".x");
+  const a = ta.selectionStart, b = ta.selectionEnd, sel = ta.value.slice(a, b) || "texto";
+  let out;
+  if (btn.dataset.k === "b") out = `**${sel}**`;
+  else if (btn.dataset.k === "i") out = `*${sel}*`;
+  else {
+    const url = prompt("Dirección del enlace:", "https://");
+    if (!url) return;
+    out = `[${sel}](${url})`;
+  }
+  ta.setRangeText(out, a, b, "end");
+  ta.focus();
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+document.addEventListener("click", e => { const fb = e.target.closest(".fm"); if (fb) applyFmt(fb); });
+document.addEventListener("input", e => { const ed = e.target.closest(".ed"); if (ed) preview(ed); });
+document.addEventListener("change", e => { const ed = e.target.closest(".ed"); if (ed) preview(ed); });
+
+$("ned").innerHTML = editor("auto", "");
+$("ned").querySelector(".x").id = "nx";
+$("ned").querySelector(".st").id = "nst";
+
 let count = {}, posts = [];
 const thumb = f => {
   const u = "/media/" + f.key;
@@ -104,9 +147,10 @@ async function start() {
     <div class="post" data-id="${p.id}"><hr>
       ${(p.files || []).map(thumb).join("")}
       <input class="t" placeholder="Título" value="${esc(p.title)}">
-      <textarea class="x" placeholder="Texto">${esc(p.text)}</textarea>
+      ${editor(p.style || "auto", p.text)}
       <button>Guardar</button> <button class="del">Borrar</button> <small class="s"></small>
     </div>`).join("") : "Todavía no hay nada.";
+  document.querySelectorAll("#list .ed").forEach(preview);
   pdfPreviews();
 }
 
@@ -117,6 +161,7 @@ $("go").onclick = async () => {
 };
 
 $("list").addEventListener("click", async e => {
+  if (e.target.closest(".fm")) return;
   if (e.target.tagName !== "BUTTON") return;
   const d = e.target.closest(".post"), s = d.querySelector(".s");
   if (e.target.classList.contains("del")) {
@@ -127,7 +172,7 @@ $("list").addEventListener("click", async e => {
     return;
   }
   s.textContent = "Guardando...";
-  const r = await api({ id: d.dataset.id, title: d.querySelector(".t").value, text: d.querySelector(".x").value });
+  const r = await api({ id: d.dataset.id, title: d.querySelector(".t").value, text: d.querySelector(".x").value, style: d.querySelector(".st").value });
   s.textContent = r.ok ? "Guardado." : "Error al guardar.";
 });
 
@@ -168,7 +213,7 @@ async function withRetry(fn) {
   }
 }
 
-async function sendPost(id, title, text, fs, label) {
+async function sendPost(id, title, text, fs, label, style) {
   const files = [];
   for (const [i, f] of fs.entries()) {
     const parts = Math.ceil(f.size / CHUNK), type = f.type || "application/octet-stream";
@@ -181,7 +226,7 @@ async function sendPost(id, title, text, fs, label) {
     }
     files.push({ key: `${id}-${i}`, type, name: f.name });
   }
-  await withRetry(() => xhrUpload("kind=post", JSON.stringify({ id, title, text, files }), "application/json", false));
+  await withRetry(() => xhrUpload("kind=post", JSON.stringify({ id, title, text, style, files }), "application/json", false));
 }
 
 $("pub").onclick = async () => {
@@ -203,8 +248,8 @@ $("pub").onclick = async () => {
         await sendPost(String(base + n), "", "", [f], `Archivo ${n + 1}/${todo.length}: `);
         posted.add(fkey(f));
       }
-    } else { msg = ""; await sendPost(String(base), title, text, fs, ""); }
-    $("nt").value = $("nx").value = $("nf").value = ""; posted.clear();
+    } else { msg = ""; await sendPost(String(base), title, text, fs, "", $("nst").value); }
+    $("nt").value = $("nx").value = $("nf").value = ""; posted.clear(); preview($("ned"));
     bar.value = 100; st.style.color = ""; st.textContent = "Publicado."; start();
     setTimeout(() => { bar.hidden = true; }, 2500);
   } catch (e) {
