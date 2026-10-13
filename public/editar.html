@@ -37,6 +37,7 @@
   <button id="pub">Publicar</button> <small id="ns"></small>
   <progress id="bar" max="100" value="0" hidden style="width:100%;height:14px;margin-top:6px"></progress>
 </div>
+<div id="tools" hidden><button id="dd">Quitar repetidos</button> <small id="ds"></small></div>
 <div id="list"></div>
 <script>
 const $ = id => document.getElementById(id);
@@ -47,7 +48,7 @@ try { KEY = localStorage.getItem("key") || ""; } catch (e) {}
 const api = body => fetch("/api/edit?key=" + encodeURIComponent(KEY), { method: "POST", body: JSON.stringify(body) });
 
 const isPdf = f => f.type === "application/pdf" || /\.pdf$/i.test(f.name || "");
-let count = {};
+let count = {}, posts = [];
 const thumb = f => {
   const u = "/media/" + f.key;
   const dup = count[(f.name || "").toLowerCase()] > 1 ? " ⚠ repetido" : "";
@@ -95,6 +96,8 @@ async function start() {
     if (!x !== !y) return x ? -1 : 1;
     return x.localeCompare(y, undefined, { numeric: true }) || a.id - b.id;
   });
+  posts = ps;
+  $("tools").hidden = false;
   count = {};
   ps.forEach(p => (p.files || []).forEach(f => { const k = (f.name || "").toLowerCase(); count[k] = (count[k] || 0) + 1; }));
   $("list").innerHTML = ps.length ? ps.map(p => `
@@ -210,6 +213,34 @@ $("pub").onclick = async () => {
   }
   clearInterval(watch);
   $("pub").disabled = false;
+};
+
+$("dd").onclick = async () => {
+  const ds = $("ds"), groups = {};
+  posts.forEach(p => {
+    const k = (p.files && p.files.length)
+      ? p.files.map(f => (f.name || "").toLowerCase()).sort().join("|")
+      : "t:" + p.title + "|" + p.text;
+    (groups[k] = groups[k] || []).push(p);
+  });
+  const del = [];
+  Object.values(groups).forEach(g => {
+    if (g.length < 2) return;
+    const keep = Math.floor(Math.random() * g.length);
+    g.forEach((p, i) => { if (i !== keep) del.push(p); });
+  });
+  if (!del.length) { ds.textContent = "No hay repetidos."; return; }
+  if (!confirm(`Se borrarán ${del.length} publicaciones repetidas (se queda una al azar de cada grupo). ` +
+    `Solo se comparan los nombres de archivo, no el contenido. No se puede deshacer. ¿Seguir?`)) return;
+  $("dd").disabled = true;
+  try {
+    for (const [n, p] of del.entries()) {
+      ds.textContent = `Borrando ${n + 1}/${del.length}...`;
+      if (!(await api({ id: p.id, delete: true })).ok) throw 0;
+    }
+    ds.textContent = `Listo: ${del.length} borradas.`;
+  } catch (e) { ds.textContent = "Error al borrar; revisa la lista."; }
+  $("dd").disabled = false; start();
 };
 
 start();
