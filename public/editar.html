@@ -35,6 +35,7 @@
   <input id="nf" type="file" multiple>
   <label><input id="sep" type="checkbox" style="width:auto"> Una publicación por archivo (ignora título y texto)</label><br>
   <button id="pub">Publicar</button> <small id="ns"></small>
+  <progress id="bar" max="100" value="0" hidden style="width:100%;height:14px;margin-top:6px"></progress>
 </div>
 <div id="list"></div>
 <script>
@@ -128,41 +129,86 @@ $("list").addEventListener("click", async e => {
 });
 
 const CHUNK = 4 * 1024 * 1024;
-const upload = (qs, body, type) => fetch("/api/upload?key=" + encodeURIComponent(KEY) + "&" + qs,
-  { method: "POST", headers: { "content-type": type }, body });
+const st = $("ns"), bar = $("bar");
+let total = 0, done = 0, last = 0, msg = "";
+const posted = new Set();
+const fkey = f => `${f.name}|${f.size}|${f.lastModified}`;
+$("nf").onchange = () => posted.clear();
 
-const st = $("ns");
+function show(bytes) {
+  const pct = total ? Math.min(100, Math.round(bytes / total * 100)) : 0;
+  bar.value = pct; st.style.color = ""; st.textContent = `${msg} · ${pct}%`;
+}
+
+function xhrUpload(qs, body, type, track) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", "/api/upload?key=" + encodeURIComponent(KEY) + "&" + qs);
+    x.setRequestHeader("content-type", type);
+    x.timeout = 120000;
+    x.upload.onprogress = e => { last = Date.now(); if (track) show(done + e.loaded); };
+    x.onload = () => x.status === 200 ? resolve() : reject(new Error("HTTP " + x.status));
+    x.onerror = () => reject(new Error("sin conexión"));
+    x.ontimeout = () => reject(new Error("tiempo agotado"));
+    x.send(body);
+  });
+}
+
+async function withRetry(fn) {
+  for (let a = 1; ; a++) {
+    try { last = Date.now(); return await fn(); }
+    catch (e) {
+      if (a >= 3) throw e;
+      st.style.color = "#b00"; st.textContent = `Falló (${e.message}). Reintentando ${a}/2...`;
+      await new Promise(r => setTimeout(r, 2000 * a));
+    }
+  }
+}
 
 async function sendPost(id, title, text, fs, label) {
   const files = [];
   for (const [i, f] of fs.entries()) {
     const parts = Math.ceil(f.size / CHUNK), type = f.type || "application/octet-stream";
+    msg = label + f.name;
     for (let p = 0; p < parts; p++) {
-      st.textContent = `${label}Subiendo ${f.name} (${p + 1}/${parts})...`;
-      const r = await upload(`kind=part&post=${id}&file=${i}&part=${p}&parts=${parts}` +
-        `&type=${encodeURIComponent(type)}&name=${encodeURIComponent(f.name)}`,
-        f.slice(p * CHUNK, (p + 1) * CHUNK), "application/octet-stream");
-      if (!r.ok) throw 0;
+      const blob = f.slice(p * CHUNK, (p + 1) * CHUNK);
+      await withRetry(() => xhrUpload(`kind=part&post=${id}&file=${i}&part=${p}&parts=${parts}` +
+        `&type=${encodeURIComponent(type)}&name=${encodeURIComponent(f.name)}`, blob, "application/octet-stream", true));
+      done += blob.size; show(done);
     }
     files.push({ key: `${id}-${i}`, type, name: f.name });
   }
-  if (!(await upload("kind=post", JSON.stringify({ id, title, text, files }), "application/json")).ok) throw 0;
+  await withRetry(() => xhrUpload("kind=post", JSON.stringify({ id, title, text, files }), "application/json", false));
 }
 
 $("pub").onclick = async () => {
   const title = $("nt").value.trim(), text = $("nx").value.trim();
   const fs = [...$("nf").files].filter(f => f.size > 0);
   if (!title && !text && !fs.length) return;
-  $("pub").disabled = true;
+  const sep = $("sep").checked && fs.length > 1;
+  const todo = sep ? fs.filter(f => !posted.has(fkey(f))) : fs;
+  total = todo.reduce((n, f) => n + f.size, 0); done = 0; last = Date.now();
+  $("pub").disabled = true; bar.hidden = false; bar.value = 0;
+  const watch = setInterval(() => {
+    const secs = Math.round((Date.now() - last) / 1000);
+    if (secs >= 20) { st.style.color = "#b00"; st.textContent = `⚠ Sin avances desde hace ${secs} s. Sigue intentando...`; }
+  }, 3000);
   try {
     const base = Date.now();
-    if ($("sep").checked && fs.length > 1) {
-      for (const [n, f] of fs.entries())
-        await sendPost(String(base + n), "", "", [f], `Archivo ${n + 1}/${fs.length}: `);
-    } else await sendPost(String(base), title, text, fs, "");
-    $("nt").value = $("nx").value = $("nf").value = "";
-    st.textContent = "Publicado."; start();
-  } catch (e) { st.textContent = "Error al subir."; }
+    if (sep) {
+      for (const [n, f] of todo.entries()) {
+        await sendPost(String(base + n), "", "", [f], `Archivo ${n + 1}/${todo.length}: `);
+        posted.add(fkey(f));
+      }
+    } else { msg = ""; await sendPost(String(base), title, text, fs, ""); }
+    $("nt").value = $("nx").value = $("nf").value = ""; posted.clear();
+    bar.value = 100; st.style.color = ""; st.textContent = "Publicado."; start();
+    setTimeout(() => { bar.hidden = true; }, 2500);
+  } catch (e) {
+    st.style.color = "#b00";
+    st.textContent = `✖ Falló: ${e.message || "error"}. Toca Publicar para reintentar.`;
+  }
+  clearInterval(watch);
   $("pub").disabled = false;
 };
 
