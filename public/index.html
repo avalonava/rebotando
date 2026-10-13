@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Things I Like</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>🕯️</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
@@ -26,7 +27,6 @@
 <script>
 const esc = s => s.replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const link = s => esc(s).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}">${u}</a>`);
-const date = id => new Date(+id).toLocaleDateString(undefined, {year:"numeric", month:"long", day:"numeric"});
 
 function render(p) {
   let h = '<div class="post">';
@@ -39,7 +39,7 @@ function render(p) {
     else h += `<a href="${u}">${esc(f.name||"file")}</a><br>`;
   }
   if (p.text) h += /^["“]/.test(p.text) ? `<blockquote>${link(p.text)}</blockquote>` : link(p.text) + "<br>";
-  return h + `<small>${date(p.id)}</small></div><hr>`;
+  return h + `</div><hr>`;
 }
 
 // Same shuffled order for everyone, reshuffled every 30 days
