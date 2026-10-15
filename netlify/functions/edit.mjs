@@ -10,6 +10,18 @@ export default async (req) => {
   const p = await req.json();
   if (p.check) return new Response("ok");
 
+  // Clear leftover files once every post is gone
+  if (p.purge) {
+    if ((await getStore("posts").list()).blobs.length) return new Response("posts remain", { status: 409 });
+    for (const name of ["media", "chunks"]) {
+      const st = getStore(name);
+      const { blobs } = await st.list();
+      for (let i = 0; i < blobs.length; i += 25)
+        await Promise.all(blobs.slice(i, i + 25).map(b => st.delete(b.key)));
+    }
+    return new Response("purged");
+  }
+
   const store = getStore("posts");
   const post = await store.get(String(p.id), { type: "json" });
   if (!post) return new Response("not found", { status: 404 });

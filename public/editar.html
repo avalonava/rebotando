@@ -42,7 +42,7 @@
   <button id="pub">Publicar</button> <small id="ns"></small>
   <progress id="bar" max="100" value="0" hidden style="width:100%;height:14px;margin-top:6px"></progress>
 </div>
-<div id="tools" hidden><button id="dd">Quitar repetidos</button> <small id="ds"></small></div>
+<div id="tools" hidden><button id="dd">Quitar repetidos</button> <button id="da" style="border-color:#b00;color:#b00">Borrar todo</button> <small id="ds"></small></div>
 <div id="list"></div>
 <script src="/format.js"></script>
 <script>
@@ -286,6 +286,25 @@ $("dd").onclick = async () => {
     ds.textContent = `Listo: ${del.length} borradas.`;
   } catch (e) { ds.textContent = "Error al borrar; revisa la lista."; }
   $("dd").disabled = false; start();
+};
+
+$("da").onclick = async () => {
+  const ds = $("ds");
+  if (!posts.length) { ds.textContent = "No hay nada que borrar."; return; }
+  const ok = prompt(`Se borrarán las ${posts.length} publicaciones y todos sus archivos. No se puede deshacer.\n\nEscribe BORRAR para confirmar:`);
+  if (ok !== "BORRAR") { ds.textContent = "Cancelado."; return; }
+  $("da").disabled = $("dd").disabled = true;
+  try {
+    const all = [...posts];
+    for (const [n, p] of all.entries()) {
+      ds.textContent = `Borrando ${n + 1}/${all.length}...`;
+      if (!(await api({ id: p.id, delete: true })).ok) throw 0;
+    }
+    ds.textContent = "Limpiando archivos sueltos...";
+    if (!(await api({ purge: true })).ok) throw 0;
+    ds.textContent = "Todo borrado.";
+  } catch (e) { ds.textContent = "Error al borrar; revisa la lista y vuelve a intentarlo."; }
+  $("da").disabled = $("dd").disabled = false; start();
 };
 
 start();
