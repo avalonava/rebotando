@@ -1,3 +1,4 @@
 [build]
+  command = "(unzip -oq site.zip || python3 -m zipfile -e site.zip .) && npm install"
   publish = "public"
   functions = "netlify/functions"
